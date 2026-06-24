@@ -1,0 +1,106 @@
+================================================================================
+2026-06-24  BEV car localization + tracking from a monocular depth model
+================================================================================
+
+GOAL (user)
+  Recreate a Bird's-Eye-View visualization from the best depth model (model-agnostic;
+  we use UniDepth-V2-L), tracking the position of CARS only, with metrics.
+
+METHOD  (src/calib_depth/bev_tracker.py; runs in baselines venv: nuscenes-devkit + unidepth)
+  1. UniDepth-V2-L -> metric depth (camera-z) on nuScenes CAM_FRONT.
+  2. GT cars from nuScenes 3-D boxes (vehicle.car/truck/bus/... ; gives both the car
+     image footprint AND the GT BEV position for scoring).
+  3. Per car: project box, take MEDIAN predicted depth over its 2-D footprint, back-
+     project the box-centre pixel -> camera-frame point -> BEV (lateral x, forward z).
+  4. Metric: BEV position error vs GT box centre (+ longitudinal/lateral, per-range).
+  5. Viz: camera image w/ car boxes (pred/GT range) + top-down BEV (ego origin, FOV
+     wedge, range rings, GT dots vs predicted x).
+  6. Tracking (--track): walk a scene's frames, associate cars by nuScenes instance
+     token, transform points cam->ego->global, draw per-car GT vs predicted BEV
+     trajectories + the ego path.
+
+RESULTS  (UniDepth-V2-L, nuScenes v1.0-mini CAM_FRONT)
+  80-sample run, 744 cars:
+    BEV position error: mean 6.15 m | median 2.76 m
+    longitudinal (z) 5.86 m  |  lateral (x) 1.55 m
+    by range: 0-20 m 2.03 | 20-40 m 3.84 | 40-80 m 9.18
+  Single-scene (scene-0061, 39 frames): 234 cars, 17 tracked (>=3 frames);
+    BEV err mean 7.93 / med 3.71; 0-20 2.32 | 20-40 5.32 | 40-80 12.24.
+
+FINDINGS
+  - Lateral (x) localization is good (~1.5-2 m); the error is dominated by the
+    LONGITUDINAL (depth/range) axis (~6-7 m mean) and grows strongly with range
+    (2 m at <20 m -> ~9-12 m at 40-80 m) -- the expected monocular failure mode.
+  - In the global-frame trajectory plot, predicted tracks run PARALLEL to GT tracks
+    but are offset along the viewing ray by the range error (small near the ego path,
+    larger for distant cars). The tracking/association itself is exact (GT instance
+    tokens), so the plot isolates depth error, not data association.
+
+ARTIFACTS (pulled to local viz_bev/)
+  bev_CAM_FRONT_*.png      single-frame: camera + car boxes | BEV GT vs predicted
+  bev_tracks_scene-0061.png  multi-frame: per-car GT vs predicted BEV trajectories
+
+UPDATE — truncated to 40 m + animated sequence
+  MAX_RANGE lowered 80 -> 40 m (cars beyond 40 m dropped from metrics and plots).
+  Re-run (80 samples, 379 cars in range):
+    BEV position error: mean 3.24 m | median 1.44 m  (lat 1.06, lon 3.00)
+    by range: 0-20 m 2.03 | 20-40 m 3.84   (vs 6.15/2.76 when including 40-80 m;
+    the far bucket dominated the old mean, as expected for monocular depth.)
+  NEW --animate mode: render_sequence() walks a scene's frames and writes an animated
+  GIF (camera + ego-frame BEV per frame, GT vs predicted, frame counter), capped 40 m.
+  Artifact: viz_bev/bev_seq_scene-0061.gif (39 frames).
+
+UPDATE 2 — time-consistency (jump protection) + recreated GIF
+  Cars move smoothly but per-frame mono depth jitters, so the raw BEV "jumps". Added
+  a constant-velocity KALMAN filter per car track (kalman_cv), filtering in the GLOBAL
+  frame (where motion is physically smooth) with INNOVATION GATING: a measurement whose
+  Mahalanobis distance exceeds chi2(2,99%)=9.21 is treated as a false/jittery detection
+  and REJECTED (predict-only) -> the track cannot jump. Smoothed global positions are
+  mapped back to the ego frame (global_to_cam) for display.
+  TIME-CONSISTENCY METRIC (scene-0061, 10 tracks >=3 frames):
+    track smoothness = RMS of per-frame 2nd-difference (accel): raw 6.99 m -> 2.19 m
+        => 69% less jitter.
+    gated jump-measurements: 5 ; implausible jumps (>12 m/frame): raw 4 -> 1.
+    accuracy vs GT (global BEV): raw 4.93 m -> 4.66 m (preserved, slightly better).
+  GIF recreated (viz_bev/bev_seq_scene-0061.gif, 39 frames): GT (teal o), raw pred
+  (faint x), smoothed (red diamond) -> visibly steady vs the jittery raw markers.
+  Tunables in kalman_cv: sigma_a (process accel std, smoothness), r_std (meas noise),
+  gate (jump rejection threshold).
+
+ROLLING-VIDEO METRIC (analogue of depth's d1; bev_tracker.py --consistency N)
+  Depth d1 = per-pixel ratio threshold, static/per-frame -> blind to jitter on a video.
+  Rolling-video score has TWO axes:
+   (1) SPATIAL  BEV-delta@tau = fraction of car-obs within tau m of GT in BEV (the d1
+       analogue; DISTANCE threshold not ratio; tau=1/2/4 m = nuScenes centre-distance).
+   (2) TEMPORAL jitter = RMS per-frame step-acceleration of each track; + jump count.
+  Over 6 nuScenes videos (867 car-obs, <=40 m), UniDepthV2-L:
+    BEV-delta@{1,2,4}m:  raw 0.411/0.637/0.768   smoothed 0.332/0.579/0.762
+    jitter (RMS accel):  raw 4.19 m -> smoothed 1.80 m  (57% less)
+    jumps(>12m):         raw 25 -> smoothed 9   (gated 30 measurements)
+    mean BEV err:        raw 3.39 m -> smoothed 4.04 m
+  FINDING: Kalman cuts jitter 57% / jumps 3x but costs a little spatial accuracy
+  (delta@1m 0.41->0.33) -> consistency<->accuracy trade-off, operating point set by the
+  filter's process/measurement noise. Report BOTH axes (that's the point of the metric).
+  Figure: viz_bev/bev_metric_table.png (src/make_bev_metric_table.py).
+
+CORRECTION — d1 DOES transfer to video (per-frame + probabilistic)
+  Earlier claim ("d1 is blind to jitter on a video") was too strong. Keeping d1
+  PER-FRAME (not collapsing to a mean) and summarizing it as a DISTRIBUTION captures
+  temporal consistency with the SAME metric: the std / low percentiles ARE the
+  consistency signal. src/calib_depth/seq_d1.py.
+  Per-frame depth d1 (UniDepthV2-L, nuScenes, <=80 m), 4 videos / 161 frames:
+    pooled d1 mean 0.945  std 0.032  min 0.809  p10 0.905  p50 0.951  p90 0.976
+    scene-0061 0.908+/-0.036 (dips to ~0.81 mid-clip = inconsistency) ;
+    scene-0103 0.961+/-0.012 ; scene-0553 0.963+/-0.014 ; scene-0655 0.946+/-0.024.
+  => a jumpy clip shows lower mean AND wider spread / lower min, same d1 metric.
+  Figure: viz_bev/seq_d1.png (per-frame time series + distribution + mean/sigma).
+  (BEV-delta@tau from the previous note is the spatial analogue for the *tracking*
+  output; the same per-frame+distribution idea applies to it too.)
+
+NOTES / NEXT
+  - Depth sampling = median over the projected GT box footprint; a real detector
+    (YOLO) would replace GT boxes for a detector-in-the-loop demo (we used GT boxes so
+    we also have the BEV ground truth for metrics).
+  - Could run on AV2 (annotations.feather + track_uuid) the same way; needs av2 in the
+    venv. Could add velocity/heading and a constant-velocity smoother for the tracks.
+  - Same script works with OUR model's depth instead of UniDepth (swap the predictor).

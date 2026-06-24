@@ -1,0 +1,56 @@
+================================================================================
+2026-06-24  Monocular real-video demo (d57wHsiTS0E.mp4) — heatmap / direct / BEV
+================================================================================
+
+GOAL (user)
+  Copy /home/cubos/Frame2BEV/d57wHsiTS0E.mp4 into the project, split to frames at a
+  light resolution, and make the same visualizations: depth heatmap, direct video,
+  and a BEV gif (tracking cars), using the best model (UniDepth-V2-L).
+
+DATA
+  Source: 1280x720, 30 fps, ~929 s (27,883 frames) highway dashcam (own red hood +
+  timestamp overlay at bottom). Copied to data/realvideo/d57wHsiTS0E.mp4.
+  Clip: t=30 s, 30->6 fps (every 5th frame), 72 frames, downscaled 768x432 (pyav;
+  no ffmpeg locally) -> data/realvideo/frames/.
+
+PIPELINE  (src/calib_depth/video_demo.py; baselines venv: unidepth + torchvision)
+  - UniDepth-V2-L -> metric depth + self-predicted intrinsics (no GT/LiDAR/calib).
+  - torchvision Faster R-CNN (COCO) -> car/truck/bus 2-D boxes (no extra install).
+  - cars back-projected (box bottom-centre + depth + predicted K) -> BEV; online
+    constant-velocity Kalman tracker (greedy NN assoc + gating) for time-consistency.
+  Outputs viz_video/{heatmap,direct,bev}.gif (72 frames, 600 px, 6 fps).
+
+KEY FINDING (ties to the paper)
+  UniDepth's ABSOLUTE metric scale fails badly on this OOD dashcam: predicted road
+  ahead ~223 m (depth range 157-1306 m, median 440) vs true ~10-30 m -- ~40x too
+  large (pred fx~402, plausible; the scale, not the focal, is wrong). Its RELATIVE
+  depth structure is fine. Fixes for the visualizations:
+   - heatmap: per-frame RELATIVE normalization (p2-p98) -> clean near->far structure.
+   - BEV: ground-plane metric-scale recovery (assume camera height 1.5 m; the road
+     strip below horizon / above hood should sit at Y=h_cam) -> cars land at sensible
+     5-15 m. This is monocular scale recovery, GT-free.
+
+RESULT
+  heatmap.gif: relative depth (road blue near, vehicles cyan mid, sky red far).
+  direct.gif : frames + Faster R-CNN boxes with persistent track ids.
+  bev.gif    : top-down cars (~5-15 m ahead) with Kalman-smoothed tracks + trails.
+
+UPDATE — MP4 export + per-car distance labels
+  Outputs are now MP4 (cv2.VideoWriter, mp4v codec; no ffmpeg needed) and far lighter
+  than the GIFs: heatmap 5MB->0.8MB, direct 7.5MB->2.5MB, bev 0.78MB->0.44MB (720px,
+  6 fps). Per-car DISTANCE labels added: direct frame boxes show "#id <dist>m"; BEV
+  markers show "#id <dist> m" (dist = Euclidean BEV range, scale-recovered). Example
+  frame: trucks ahead #15 6m / #18 5m, consistent between the direct and BEV views.
+
+COMBINED PANEL
+  viz_video/combined.mp4 (1440x316, 72 frames, 6 fps, 2.3 MB): three synced panels
+  side-by-side -- "camera + detections" | "depth (relative)" | "BEV (id + distance)" --
+  via panelize() (equal-height resize + labelled header strips + hstack). Single
+  shareable clip of the whole monocular pipeline.
+
+NOTES / NEXT
+  - Same OOD metric-scale failure our paper documents (UniDepth pinhole/scale limits)
+    -- here it is scale, not distortion. A few LiDAR frames (our few-shot) or the
+    ground-plane prior recover it; we used the ground plane since there is no LiDAR.
+  - BEV labels overlap when cars cluster (minor); could offset/declutter. Could process
+    a longer clip / different segment and tune the Kalman gate.
