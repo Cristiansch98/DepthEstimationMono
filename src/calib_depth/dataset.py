@@ -48,8 +48,16 @@ class BenchmarkDepthDataset:
 
     @classmethod
     def build(cls, benchmark: str, root: Path, cams: Optional[List[str]] = None,
-              stride: int = 1, target_hw: tuple[int, int] = (518, 518)) -> "BenchmarkDepthDataset":
+              stride: int = 1, target_hw: tuple[int, int] = (518, 518),
+              distort: Optional[tuple[float, float]] = None,
+              fisheye: Optional[tuple[float, float]] = None) -> "BenchmarkDepthDataset":
         adapter = get_adapter(benchmark)
+        if distort is not None:
+            from .synth_distort import DistortingAdapter
+            adapter = DistortingAdapter(adapter, distort[0], distort[1])
+        if fisheye is not None:
+            from .synth_fisheye import FisheyeAdapter
+            adapter = FisheyeAdapter(adapter, fisheye[0], fisheye[1])
         refs = adapter.discover(Path(root), cams=cams, stride=stride)
         return cls(adapter, refs, target_hw=target_hw)
 

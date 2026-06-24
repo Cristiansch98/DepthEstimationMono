@@ -77,8 +77,29 @@ def main() -> None:
     ap.add_argument("--lr-head", type=float, default=1e-3)
     ap.add_argument("--no-aspect-prior", action="store_true",
                     help="drop the (log fx/fy)^2 prior (wrong under anisotropic 518^2 resize)")
+    ap.add_argument("--distort", default=None,
+                    help="inject Brown-Conrady radial distortion 'k1[,k2]' into target frames")
+    ap.add_argument("--fisheye", default=None,
+                    help="render target frames through a KB fisheye 'k1[,k2]'")
+    ap.add_argument("--distort-bound", type=float, default=None,
+                    help="widen the model radial bound (default 0.05 assumes near-pinhole; "
+                         "must exceed the true |k| to be representable)")
     ap.add_argument("--out-ckpt", type=Path, default=None)
     args = ap.parse_args()
+
+    distort = None
+    if args.distort:
+        ks = [float(x) for x in args.distort.split(",")]
+        distort = (ks[0], ks[1] if len(ks) > 1 else 0.0)
+    fisheye = None
+    if args.fisheye:
+        ks = [float(x) for x in args.fisheye.split(",")]
+        fisheye = (ks[0], ks[1] if len(ks) > 1 else 0.0)
+    if args.distort_bound is not None:
+        # Justified: A4 (near-pinhole, |k|<=0.05) is violated by construction here;
+        # the learnable radial bound must exceed the true distortion to represent it.
+        import calib_depth.model as _M
+        _M.DISTORTION_BOUND = args.distort_bound
 
     weights = dict(WEIGHTS)
     if args.no_aspect_prior:
@@ -112,7 +133,8 @@ def main() -> None:
 
     root = args.data_root / args.split if args.split and (args.data_root / args.split).exists() \
         else args.data_root
-    ds = BenchmarkDepthDataset.build(args.benchmark, root, cams=[args.cam], target_hw=TARGET_HW)
+    ds = BenchmarkDepthDataset.build(args.benchmark, root, cams=[args.cam], target_hw=TARGET_HW,
+                                     distort=distort, fisheye=fisheye)
     n = len(ds)
     adapt_idx = list(range(min(args.adapt_frames, n)))
     pool = list(range(args.adapt_frames, n)) or list(range(n))  # held-out (fallback: reuse)

@@ -84,22 +84,26 @@ def build():
 
     # ---- abstract + keywords (column 1) ----
     s.append(Paragraph(
-        "<i>Abstract</i>&mdash;<i>We present SelfCalibDepth, a framework that learns metric "
-        "distance from a single monocular image while simultaneously recovering the camera "
-        "intrinsic parameters from that same image. A synchronized LiDAR sweep, projected "
-        "into the camera, provides metric ground truth that anchors both a depth network and a "
-        "learnable camera model. The two are coupled through a per-pixel ray map: the calibration "
-        "defines the viewing rays, the rays condition a fine-tuned Depth Anything V2 backbone, "
-        "the network predicts depth along each ray, and back-projecting with the learned "
-        "intrinsics and comparing to LiDAR returns a gradient into the calibration. On the "
-        "Argoverse 2 Sensor dataset, the best model recovers focal length to within 0.26% (fx) "
-        "and 0.41% (fy) of the manufacturer calibration on held-out cameras, attains AbsRel 0.112, "
-        "and estimates distance to vehicles within sixty meters to a mean absolute error of 8.6 m "
-        "(3.9 m within thirty meters), all from a single image. A controlled ablation includes a "
-        "negative result and fully annotated assumptions. Unifying four driving benchmarks "
-        "(Argoverse 2, KITTI, nuScenes, Lyft L5) behind one interface, we further show that a "
-        "twenty-frame few-shot adaptation transfers the model to KITTI (AbsRel 0.100, accuracy "
-        "0.953) and nuScenes (0.122, 0.853), recovering focal length to about one percent.</i>",
+        "<i>Abstract</i>&mdash;<i>Reading metric distance from a single image requires resolving "
+        "two coupled unknowns, the per-pixel depth and the camera intrinsics that turn pixels into "
+        "viewing rays, which ordinary monocular depth models leave entangled. We present "
+        "SelfCalibDepth, which uses a synchronized LiDAR sweep as metric ground truth to anchor a "
+        "learnable camera model and a fine-tuned Depth Anything V2 backbone, coupled through a "
+        "per-pixel ray map: the calibration defines the rays that condition the depth head, and "
+        "back-projecting the predicted depth to match the LiDAR points sends a gradient back into "
+        "the calibration, so the camera is recovered from the image rather than assumed. On "
+        "Argoverse 2 the model recovers focal length to within 0.26%/0.41% of the manufacturer "
+        "calibration on held-out cameras, attains AbsRel 0.112 and accuracy 0.884 at threshold "
+        "1.25, and estimates vehicle distance within sixty meters to 8.6 m mean error, all from one "
+        "image. A controlled ablation includes a pinpointed negative result: a camera-conditioned "
+        "affine scale head loses to a free convolutional head, and unfreezing the foundation "
+        "backbone is the decisive lever. Unifying four driving benchmarks behind one adapter, we "
+        "find the model does not transfer zero-shot, but a twenty-frame few-shot adaptation reaches "
+        "KITTI 0.100/0.953 and nuScenes 0.122/0.853, on par with in-domain. Finally, we diagnose "
+        "from its source why the state-of-the-art UniDepth collapses under lens distortion, its "
+        "self-calibration head predicts only a pinhole, and repair it to the ground-truth-camera "
+        "oracle (AbsRel 0.158 to 0.106 under fisheye) with our few-shot LiDAR calibration and no "
+        "retraining. All modelling assumptions are annotated and the framework is released.</i>",
         st_abs))
     s.append(Paragraph("<i>Keywords</i>&mdash;<i>monocular depth estimation; camera "
                        "self-calibration; LiDAR supervision; metric depth; Argoverse 2</i>", st_kw))
@@ -127,20 +131,38 @@ def build():
     s.append(H1("II", "Related Work"))
     s.append(P("<i>Monocular depth.</i> Supervised monocular depth dates to Eigen et al. [1] and "
                "the scale-invariant loss; MiDaS [2] and DPT [3] showed that relative "
-               "(affine-invariant) depth transfers across datasets. Depth Anything V2 [4] scales "
-               "this with a DINOv2 backbone and a DPT head. Relative depth is not metric: an "
-               "affine ambiguity in inverse-depth remains."))
-    s.append(P("<i>Metric and camera-aware depth.</i> Recovering metric scale needs known "
-               "intrinsics or a learned prior. CAM-Convs [5] injects per-pixel calibration into "
-               "convolutions; Metric3D [6] and ZoeDepth [7] recover metric scale by conditioning "
-               "on the intrinsics. Our ray-map conditioning is in this lineage, but the "
-               "intrinsics it consumes are learned, not given."))
+               "(affine-invariant) depth transfers across datasets, and Depth Anything V2 [4] "
+               "scales this with a DINOv2 backbone and a DPT head. Relative depth is not metric: an "
+               "affine ambiguity in inverse-depth remains, and resolving it brings back the camera."))
+    s.append(P("<i>Metric and camera-aware depth.</i> CAM-Convs [5] injects per-pixel calibration "
+               "into convolutions; Metric3D [6] and Metric3Dv2 [13] canonicalise to a reference "
+               "focal length; ZoeDepth [7] adds a metric head. Most relevant, UniDepth [12] predicts "
+               "metric depth and its own camera, as a dense ray field, zero-shot across datasets and "
+               "is our strongest baseline. Our ray-map shares the camera-as-rays idea, but our "
+               "intrinsics are LiDAR-calibrated rather than predicted, and Section V shows UniDepth's "
+               "predicted camera is pinhole-only and fails under lens distortion."))
     s.append(P("<i>Self-calibration.</i> DroidCalib [8] folds intrinsics into a deep "
                "bundle-adjustment layer, optimizing them jointly with structure from monocular "
                "video. We keep the jointly-optimized-intrinsics idea but replace the multi-view "
-               "anchor with direct LiDAR, removing scale ambiguity. Argoverse 2 [9] uniquely "
-               "provides per-camera ground-truth intrinsics and 3-D cuboids, letting us measure "
-               "both depth and calibration error."))
+               "anchor with direct LiDAR, which removes scale ambiguity and lets us score the "
+               "recovered intrinsics against manufacturer calibration."))
+    s.append(P("<i>Wide-FOV and fisheye models.</i> Real automotive cameras are often strongly "
+               "distorted, beyond pinhole plus Brown-Conrady. The generic fisheye of Kannala and "
+               "Brandt [14], the unified omnidirectional model of Mei and Rives [15], and the "
+               "Enhanced Unified Camera Model [16] (pinhole to fisheye with two extra parameters) "
+               "cover lenses up to and beyond 180 degrees. Fisheye driving data with LiDAR exists "
+               "(WoodScape [17], KITTI-360 [18]) but is access-gated, so we study controlled "
+               "synthetic distortion with known ground truth (Section V)."))
+    s.append(P("<i>Test-time and few-shot adaptation.</i> Adapting a pretrained model at deployment "
+               "is studied for online stereo [19] and via test-time training [20]. Our few-shot "
+               "self-calibration is minimal: it adapts only the camera, a few parameters, from a "
+               "handful of LiDAR frames with the depth network frozen; learning to predict "
+               "distortion zero-shot from one image proves hard, motivating the few-shot route."))
+    s.append(P("<i>LiDAR supervision and cross-dataset evaluation.</i> Projecting LiDAR for sparse "
+               "supervision is standard since the KITTI depth benchmark [10]. Argoverse 2 [9], "
+               "nuScenes [11] and KITTI provide synchronized cameras, LiDAR, ego-poses, per-camera "
+               "ground-truth intrinsics and 3-D boxes, letting us measure depth and self-calibration "
+               "error and test cross-dataset transfer, which most self-calibration work cannot."))
 
     # ---- III. Methodology ----
     s.append(H1("III", "Methodology"))
@@ -259,7 +281,7 @@ def build():
                "to KITTI and nuScenes front cameras (fx 721 and 1266; AV2 1782) under three "
                "regimes: zero-shot; adapting only the per-camera latent on twenty frames; and "
                "additionally adapting the small depth head with the aspect prior disabled "
-               "(Table III, Fig. 4). Held-out qualitative results appear in Fig. 5."))
+               "(Table III, Fig. 4). Held-out qualitative results appear in Fig. 6."))
     s.append(_table3())
     s.append(P("Three findings. <i>Zero-shot transfer fails</i>, and structurally: intrinsics are a "
                "per-camera latent plus a small image residual, so an unseen camera inherits the AV2 "
@@ -270,6 +292,39 @@ def build():
                "dramatically (KITTI accuracy 0.026 to 0.953, nuScenes 0.184 to 0.853), matching "
                "in-domain AV2. A residual ten-to-fourteen percent error in fy persists, as vertical "
                "focal is weakly observed by the LiDAR loss."))
+
+    # ---- V.G Diagnosing and repairing UniDepth ----
+    s.append(H2("G", "Diagnosing and repairing a foundation model under distortion"))
+    s.append(P("The strongest model we benchmarked, UniDepth-V2, predicts its own camera and is "
+               "strong zero-shot on near-pinhole driving images (KITTI AbsRel 0.089, nuScenes 0.105), "
+               "yet under our controlled distortion sweep its depth degrades and then collapses "
+               "(KITTI AbsRel 0.09 to 0.28; nuScenes to 0.78). Reading its source explains why: the "
+               "depth decoder is camera-agnostic, conditioning on a per-pixel ray field, so it "
+               "consumes whatever camera it is given (its code implements pinhole, EUCM, OpenCV, "
+               "Fisheye624 and MEI), but the inference-time self-calibration head predicts only a "
+               "four-parameter pinhole. On a distorted lens the predicted rays are wrong toward the "
+               "periphery and depth degrades; the failure is localised entirely in the camera head, "
+               "not the decoder."))
+    s.append(P("This implies a fix needing no retraining: predict a distortion-capable camera, and "
+               "recover it with our LiDAR few-shot self-calibration. We freeze UniDepth, fit the "
+               "unknown distortion from twenty LiDAR frames via the reprojection objective, and "
+               "supply the recovered camera at inference (Table IV, Fig. 5). The recovered camera "
+               "matches the ground-truth-camera oracle, lifting accuracy from AbsRel 0.158 to 0.106 "
+               "and the 1.25 threshold from 0.695 to 0.866 at the strong setting, purely from "
+               "calibration. Caveats: the minimal EUCM head fits realistic but not extreme fisheye; "
+               "central LiDAR under-constrains high-order terms, so a low-order fit with fixed base "
+               "focal is required; and the residual gap to the undistorted level (0.076) reflects the "
+               "backbone still ingesting the warped image, which distortion augmentation in "
+               "pretraining would address."))
+    s.append(_table4())
+    s.append(P("We also tested making the head predict distortion <i>zero-shot</i>: a head trained "
+               "to regress EUCM distortion from a single image (with augmentation and a ray-matching "
+               "loss) collapses to a near-constant prediction, its error scaling with the held-out "
+               "distortion. Per-image distortion is only weakly identifiable from one image with a "
+               "light head -- a plausible reason production models commit to a pinhole head -- so the "
+               "few-shot route is the dependable one. The recipe is thus a distortion-capable camera "
+               "the decoder can use, plus LiDAR few-shot self-calibration to estimate it, rather than "
+               "a learned zero-shot distortion predictor."))
 
     # ---- VI. Conclusion ----
     s.append(H1("VI", "Conclusion"))
@@ -302,8 +357,12 @@ def build():
                    "Fig. 4.&nbsp;&nbsp;Cross-dataset generalization. AbsRel, accuracy at threshold "
                    "1.25, and focal-length error (log axis) across the three adaptation regimes for "
                    "KITTI and nuScenes; the dashed line is the in-domain Argoverse 2 result."))
+    s.append(_wfig("viz_paper/unidepth_fix.png",
+                   "Fig. 5.&nbsp;&nbsp;Repairing UniDepth under KB-fisheye distortion. A camera "
+                   "recovered by our 20-frame LiDAR self-calibration matches the ground-truth-camera "
+                   "oracle and far exceeds the zero-shot (pinhole-head) prediction."))
     s.append(_wfig("viz_paper/cross_dataset_qualitative.png",
-                   "Fig. 5.&nbsp;&nbsp;Qualitative cross-dataset results. One row per benchmark "
+                   "Fig. 6.&nbsp;&nbsp;Qualitative cross-dataset results. One row per benchmark "
                    "(Argoverse 2, KITTI, nuScenes): input, ground-truth LiDAR depth, predicted "
                    "metric depth, and absolute error at the LiDAR points, on a shared scale. Row "
                    "labels give native resolution, focal length, and held-out metrics."))
@@ -390,6 +449,27 @@ def _table3():
     return KeepTogether([cap, t, Spacer(1, 6)])
 
 
+def _table4():
+    from reportlab.platypus import KeepTogether
+    data = [["Camera supplied to UniDepth", "k1=2.5", "k1=4.0"],
+            ["none (predicted pinhole)", "0.112 / 0.85", "0.158 / 0.70"],
+            ["ours (20-frame LiDAR calib)", "0.087 / 0.93", "0.106 / 0.87"],
+            ["GT camera (oracle)", "0.087 / 0.93", "0.106 / 0.87"]]
+    t = Table(data, colWidths=[1.42, 0.7, 0.7])
+    t.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, -1), "Times-Roman"), ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("FONTNAME", (0, 0), (-1, 0), "Times-Bold"), ("FONTNAME", (0, 2), (-1, 2), "Times-Bold"),
+        ("ALIGN", (1, 0), (-1, -1), "CENTER"), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LINEABOVE", (0, 0), (-1, 0), 0.8, colors.black),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.5, colors.black),
+        ("LINEBELOW", (0, -1), (-1, -1), 0.8, colors.black),
+        ("TOPPADDING", (0, 0), (-1, -1), 1.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5)]))
+    cap = Paragraph("TABLE IV.&nbsp;&nbsp;R<font size=6>EPAIRING</font> U<font size=6>NI</font>D"
+                    "<font size=6>EPTH UNDER KB-FISHEYE</font> (AbsRel / acc.1.25; KITTI held-out). "
+                    "Our few-shot calibration matches the oracle.", st_tcap)
+    return KeepTogether([cap, t, Spacer(1, 6)])
+
+
 def _figure():
     return _fig("viz_v3/infer_v3_closetraffic.png",
                 "Fig. 3.&nbsp;&nbsp;Single-image inference (v3). Left: input with per-vehicle "
@@ -438,6 +518,24 @@ REFS = [
     "KITTI vision benchmark suite,&rdquo; in <i>CVPR</i>, 2012.",
     "[11] H. Caesar et al., &ldquo;nuScenes: A multimodal dataset for autonomous driving,&rdquo; "
     "in <i>CVPR</i>, 2020.",
+    "[12] L. Piccinelli et al., &ldquo;UniDepth: Universal monocular metric depth "
+    "estimation,&rdquo; in <i>CVPR</i>, 2024.",
+    "[13] M. Hu et al., &ldquo;Metric3D v2: A versatile monocular geometric foundation "
+    "model,&rdquo; <i>IEEE TPAMI</i>, 2024.",
+    "[14] J. Kannala and S. Brandt, &ldquo;A generic camera model and calibration method for "
+    "conventional, wide-angle, and fisheye lenses,&rdquo; <i>IEEE TPAMI</i>, 2006.",
+    "[15] C. Mei and P. Rives, &ldquo;Single view point omnidirectional camera calibration from "
+    "planar grids,&rdquo; in <i>ICRA</i>, 2007.",
+    "[16] B. Khomutenko, G. Garcia, and P. Martinet, &ldquo;An enhanced unified camera "
+    "model,&rdquo; <i>IEEE RA-L</i>, 2016.",
+    "[17] S. Yogamani et al., &ldquo;WoodScape: A multi-task, multi-camera fisheye dataset for "
+    "autonomous driving,&rdquo; in <i>ICCV</i>, 2019.",
+    "[18] Y. Liao, J. Xie, and A. Geiger, &ldquo;KITTI-360: A novel dataset and benchmarks for "
+    "urban scene understanding in 2D and 3D,&rdquo; <i>IEEE TPAMI</i>, 2022.",
+    "[19] A. Tonioni et al., &ldquo;Real-time self-adaptive deep stereo,&rdquo; in <i>CVPR</i>, "
+    "2019.",
+    "[20] Y. Sun et al., &ldquo;Test-time training with self-supervision for generalization under "
+    "distribution shifts,&rdquo; in <i>ICML</i>, 2020.",
 ]
 
 if __name__ == "__main__":

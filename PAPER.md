@@ -8,31 +8,27 @@ June 2026
 
 ## Abstract
 
-We present **SelfCalibDepth**, a framework that learns to read *metric distance*
-from a single monocular image while simultaneously **recovering the camera's
-intrinsic parameters** from that same image. The key idea is that a synchronized
-LiDAR sweep, projected into the camera, provides dense-enough *metric* ground
-truth to anchor both a depth network and a learnable camera model. The two are
-coupled through a per-pixel **ray map**: the calibration defines the viewing
-rays, the rays condition a fine-tuned Depth Anything V2 backbone, the network
-predicts depth-along-ray, and back-projecting with the learned intrinsics and
-comparing to LiDAR sends a gradient back into the calibration. On the Argoverse 2
-Sensor dataset our best model recovers focal length to within **0.26 % (fx) /
-0.41 % (fy)** of the manufacturer calibration on held-out cameras, attains
-**AbsRel 0.112 / δ<1.25 = 0.884** metric depth, and estimates **distance to
-vehicles within 0–60 m to a mean absolute error of 8.6 m** (3.9 m within 30 m) —
-all from a single image. We document a controlled ablation (v1→v3), including a
-**negative result**: a camera-conditioned global-affine scale head, although
-theoretically attractive, underperformed a free convolutional head, and the
-decisive improvement came from unfreezing the foundation backbone. Finally, to
-test generalisation beyond a single sensor rig, we unify four driving benchmarks
-(Argoverse 2, KITTI, nuScenes, Lyft L5) behind one adapter interface and show
-that, although the AV2-trained model does **not** transfer zero-shot, a **20-frame
-few-shot adaptation** of a tiny per-camera latent plus a 58.8 k-parameter depth
-head recovers focal length to ~1 % and reaches **KITTI AbsRel 0.100 / δ<1.25 =
-0.953** and **nuScenes 0.122 / 0.853** — on par with in-domain AV2. We annotate
-every modelling assumption (A1–A5) so the results are reproducible and the
-failure mode is attributable.
+Reading *metric distance* from a single image requires resolving two coupled
+unknowns — the per-pixel depth and the camera intrinsics that turn pixels into
+viewing rays — which ordinary monocular depth models leave entangled. We present
+**SelfCalibDepth**, which uses a synchronized LiDAR sweep as *metric* ground truth to
+anchor a learnable camera model and a fine-tuned Depth Anything V2 backbone, coupled
+through a per-pixel **ray map**: the calibration defines the rays that condition the
+depth head, and back-projecting the predicted depth to match the LiDAR points sends a
+gradient back into the calibration, so the camera is *recovered from the image* rather
+than assumed. On Argoverse 2 the model recovers focal length to within **0.26 %/0.41 %**
+of the manufacturer calibration on held-out cameras, attains **AbsRel 0.112,
+δ<1.25 = 0.884**, and estimates vehicle distance within 60 m to **8.6 m** mean error —
+all from one image. A controlled ablation includes a pinpointed **negative result**: a
+camera-conditioned affine scale head loses to a free convolutional head, and unfreezing
+the foundation backbone is the decisive lever. Unifying four driving benchmarks behind
+one adapter, we find the model does not transfer zero-shot, but a **20-frame few-shot
+adaptation** reaches **KITTI 0.100 / 0.953** and **nuScenes 0.122 / 0.853**, on par with
+in-domain. Finally, we diagnose from its source why the state-of-the-art **UniDepth**
+collapses under lens distortion — its self-calibration head predicts only a pinhole —
+and **repair it to the ground-truth-camera oracle** (AbsRel 0.158→0.106 under fisheye)
+with our few-shot LiDAR calibration and no retraining. All modelling assumptions are
+annotated; the framework, benchmark layer, and experiments are released.
 
 ---
 
@@ -64,38 +60,70 @@ it was not calibrated on?* We answer affirmatively. Our contributions are:
    adapter contract) and a **cross-dataset generalisation study** (§5.1) showing
    what transfers zero-shot, what does not, and how cheaply few-shot adaptation
    closes the gap.
+5. A **code-grounded diagnosis of UniDepth's failure under lens distortion** — its
+   self-calibration head predicts only a pinhole — and a **retraining-free repair**
+   via our LiDAR few-shot self-calibration that restores it to the oracle (§5.2).
 
 ---
 
-## 2. Literature Review
+## 2. Related Work
 
 **Monocular depth estimation.** Supervised monocular depth dates to Eigen *et al.*
-(2014) and the scale-invariant (SILog) loss; subsequent work (MiDaS, DPT) showed
-that *relative* (affine-invariant) depth transfers remarkably well across
-datasets. **Depth Anything V2** (2024) scales this with a DINOv2 backbone and a
-DPT head, producing high-quality relative disparity. Relative depth, however, is
-not metric: an affine ambiguity (scale and shift in inverse-depth) remains.
+(2014) and the scale-invariant (SILog) loss; MiDaS (Ranftl *et al.*, 2022) and DPT
+(Ranftl *et al.*, 2021) showed that *relative*, affine-invariant depth transfers
+remarkably well across datasets, and **Depth Anything V2** (Yang *et al.*, 2024)
+scales this with a DINOv2 backbone and a DPT head. Relative depth is not metric,
+however: an affine ambiguity (scale and shift in inverse-depth) remains, and resolving
+it is where the camera re-enters the problem.
 
-**Metric and camera-aware depth.** Recovering metric scale requires either known
-intrinsics or a learned prior. **CamConvs** (Facil *et al.*, 2019) injects
-per-pixel calibration into convolutions; **Metric3D** (2023) and **ZoeDepth**
-(2023) recover metric scale by conditioning on, or canonicalising to, the camera
-intrinsics. Our ray-map conditioning is in this lineage, but the intrinsics it
-consumes are *learned*, not given.
+**Metric and camera-aware depth.** Recovering metric scale requires known intrinsics
+or a learned prior. CAM-Convs (Facil *et al.*, 2019) injects per-pixel calibration into
+convolutions; Metric3D (Yin *et al.*, 2023) and its successor Metric3Dv2 (2024)
+canonicalise images to a reference focal length; ZoeDepth (Bhat *et al.*, 2023) adds a
+metric head to relative depth. Most relevant to us is **UniDepth** (Piccinelli *et al.*,
+2024), which predicts metric depth *and its own camera* — as a dense ray (pencil-of-rays)
+representation — from a single image, zero-shot across datasets, and is the strongest
+baseline we compare against. Our ray-map conditioning shares the camera-as-rays idea,
+but our intrinsics are *LiDAR-calibrated* rather than predicted, and §5.2 shows that
+UniDepth's self-predicted camera is restricted to a pinhole and therefore fails under
+lens distortion.
 
 **Camera self-calibration.** Classical self-calibration estimates intrinsics from
-multi-view geometry. **DroidCalib** (2023) folds intrinsics into a deep
-bundle-adjustment (DROID-SLAM) layer, optimising them jointly with structure from
-monocular video. We adopt the same *jointly-optimised-intrinsics* philosophy but
-replace the multi-view photometric/correspondence anchor with **direct LiDAR**,
-which removes scale ambiguity and the need for sequence-level optimisation.
+multi-view geometric constraints. DroidCalib (Hagemann *et al.*, 2023) folds intrinsics
+into a deep bundle-adjustment (DROID-SLAM) layer, optimising them jointly with structure
+from monocular video. We keep the *jointly-optimised-intrinsics* philosophy but replace
+the multi-view photometric/correspondence anchor with **direct LiDAR**, which removes
+scale ambiguity and the need for sequence-level optimisation, and — uniquely — lets us
+*score* the recovered intrinsics against manufacturer calibration.
 
-**Autonomous-driving depth + LiDAR.** Projecting LiDAR into the image for sparse
-supervision is standard since the KITTI depth benchmark. **Argoverse 2**
-(Wilson *et al.*, 2021) provides synchronized ring cameras, dual LiDAR, accurate
-ego-poses, per-camera ground-truth intrinsics, and 3-D cuboid annotations —
-making it uniquely suited to *measuring* both depth and self-calibration error,
-which most self-calibration work cannot.
+**Wide-FOV and fisheye camera models.** Real automotive cameras are frequently strongly
+distorted, beyond the reach of a pinhole-plus-Brown–Conrady model. The generic
+polynomial fisheye of Kannala & Brandt (2006), the unified omnidirectional model of
+Mei & Rives (2007), and the Enhanced Unified Camera Model (EUCM; Khomutenko *et al.*,
+2016) — which interpolates continuously between pinhole and fisheye with two extra
+parameters — describe lenses up to and beyond 180°. Fisheye driving datasets with LiDAR
+exist (WoodScape, Yogamani *et al.*, 2019; KITTI-360, Liao *et al.*, 2022) but are
+access-gated, so we additionally study controlled synthetic distortion with known ground
+truth. Few monocular metric-depth methods explicitly handle such optics; §5.1–§5.2
+quantify how a foundation model degrades as distortion grows and show that pairing a
+distortion-capable camera with LiDAR calibration restores it.
+
+**Test-time and few-shot adaptation.** Adapting a pretrained model to a new domain at
+deployment is well studied — online/self-adaptive stereo (Tonioni *et al.*, 2019) and
+test-time training (Sun *et al.*, 2020) are representative. Our few-shot self-calibration
+is in this spirit but is deliberately minimal: it adapts only the *camera* — a handful
+of parameters — from a few LiDAR frames while the depth network stays frozen, recovering
+metric depth and intrinsics for an unseen camera (§5.1) and repairing a frozen foundation
+model without retraining (§5.2). We further find that learning to predict distortion
+*zero-shot* from a single image is hard, which motivates the few-shot route.
+
+**LiDAR supervision and cross-dataset evaluation.** Projecting LiDAR for sparse depth
+supervision has been standard since the KITTI depth benchmark (Geiger *et al.*, 2012).
+Argoverse 2 (Wilson *et al.*, 2021), nuScenes (Caesar *et al.*, 2020) and KITTI provide
+synchronized cameras, LiDAR and ego-poses, and — crucially — per-camera ground-truth
+intrinsics and 3-D boxes. This lets us *measure* both depth and self-calibration error
+and test genuine cross-dataset transfer, which most self-calibration work, lacking a
+metric and calibration reference, cannot.
 
 ---
 
@@ -279,6 +307,78 @@ Row labels give the sensor-native resolution and focal length and the held-out
 metrics. KITTI fx≈721 @ 1242×375, nuScenes fx≈1266 @ 1600×900, AV2 fx≈1782 @
 1550×2048 — a genuinely wide intrinsic range.*
 
+### 5.2 Diagnosing and repairing a foundation model's distortion failure
+
+The most capable monocular metric-depth model we benchmarked, **UniDepth-V2**, also
+predicts its own camera and is strong zero-shot on near-pinhole driving images
+(KITTI AbsRel 0.089, nuScenes 0.105). Yet under a controlled distortion sweep
+(§5.1's synthetic-distortion protocol, applied to both a Brown–Conrady radial model
+and a Kannala–Brandt fisheye model) its depth **degrades and then collapses** as
+distortion grows — on KITTI AbsRel rises 0.09→0.28 and δ<1.25 falls 0.97→0.58 at
+strong radial distortion; on nuScenes it collapses to AbsRel 0.78 / δ<1.25 0.08.
+
+**Diagnosis (from the source).** UniDepth's depth decoder is *camera-agnostic*: it
+conditions on a per-pixel **ray field** and predicts a radius along each ray, so it
+consumes whatever camera it is given (its code base implements pinhole, EUCM, OpenCV,
+Fisheye624 and MEI cameras with differentiable projection). However, its inference-time
+**self-calibration head predicts only a four-parameter pinhole** (`fx, fy, cx, cy`);
+the distortion-capable camera models are used only when a camera is *supplied*, never
+*predicted*. On a distorted lens the predicted pinhole rays are therefore wrong —
+increasingly so toward the periphery — and the conditioned depth degrades. The failure
+is localised entirely in the camera head, not the depth decoder.
+
+**Repair.** This diagnosis implies a two-part fix that needs no retraining of the
+depth network. (i) *Predict a distortion-capable camera* rather than a pinhole — the
+decoder already supports it. (ii) *Recover that camera with our LiDAR-anchored
+few-shot self-calibration*: freeze UniDepth and fit the unknown distortion from a
+handful of LiDAR frames using the reprojection objective of §3.2, then supply the
+fitted camera at inference. We validate this on the synthetic Kannala–Brandt fisheye
+(Table IV, Fig. 4): twenty LiDAR frames recover the distortion exactly (k1 to within
+rounding, sub-pixel reprojection), and feeding the recovered camera to UniDepth lifts
+its distorted-image accuracy to **match the ground-truth-camera oracle** — AbsRel
+0.158→0.106 and δ<1.25 0.695→0.866 at the strong setting, a 33 % error reduction
+purely from calibration.
+
+| Camera supplied to UniDepth | k1=2.5 AbsRel / δ | k1=4.0 AbsRel / δ |
+|---|---|---|
+| none — predicted pinhole (zero-shot) | 0.112 / 0.845 | 0.158 / 0.695 |
+| **ours — recovered by 20-frame LiDAR self-calibration** | **0.087 / 0.927** | **0.106 / 0.866** |
+| ground-truth camera (oracle) | 0.087 / 0.927 | 0.106 / 0.866 |
+
+*Table IV — Repairing UniDepth under synthetic KB-fisheye distortion (KITTI, held-out
+frames). Our few-shot calibration matches the oracle.*
+
+*Figure 4 — `viz_paper/unidepth_fix.png`: the same result as bars (AbsRel and δ<1.25
+at k1=2.5 and 4.0).*
+
+Three caveats keep the claim honest. The Enhanced Unified Camera Model (EUCM) — the
+minimal two-parameter extension we would graft onto the head — fits *realistic*
+moderate fisheye but not the *extreme* synthetic settings here, where the exact
+Fisheye624 family is needed; the right head is therefore distortion-strength
+dependent. Calibrating from central LiDAR is **under-constrained** for high-order
+coefficients and the principal point, so a low-order fit with the base focal fixed is
+required (a free higher-order fit reprojects centrally but corrupts the periphery and
+*worsens* depth) — consistent with the peripheral-observability argument. Finally, the
+repaired accuracy (0.106) does not fully reach UniDepth's undistorted level (≈0.076),
+because the backbone still ingests the warped image; closing that residual needs
+distortion augmentation during pretraining (predicting an EUCM/Fisheye camera under a
+distortion curriculum), which our synthetic-distortion modules directly provide.
+
+We also tested the alternative of making the camera head predict distortion
+*zero-shot*: a head trained to regress EUCM distortion from a single image (with
+distortion augmentation and a ray-matching loss) **collapses to a near-constant
+prediction** — its ray error scales exactly with the held-out distortion, the
+signature of an input-independent output. Per-image distortion is only weakly
+identifiable from one image with a lightweight head, which is itself a plausible
+explanation for why production foundation models commit to a pinhole head. We take
+this as evidence that the *few-shot* route is the dependable one: a handful of LiDAR
+frames recover the camera exactly, whereas learning to predict distortion zero-shot
+would require the foundation backbone's features and large-scale, multi-camera
+distortion augmentation, and is not guaranteed to succeed. The practical recipe is
+therefore **a distortion-capable camera (so the decoder can use it) plus LiDAR
+few-shot self-calibration to estimate it**, rather than a learned zero-shot
+distortion predictor.
+
 ---
 
 ## 6. Conclusion
@@ -294,7 +394,11 @@ visible only because every assumption was annotated and ablated.
 The cross-dataset study (§5.1) sharpens the central claim: camera self-calibration
 is not just an in-domain curiosity — it transfers to KITTI and nuScenes with a
 20-frame adaptation, and with a small depth-head adaptation the *metric depth*
-transfers too.
+transfers too. §5.2 turns the method outward: it pinpoints why a state-of-the-art
+foundation model (UniDepth) fails under lens distortion — a pinhole-only
+self-calibration head — and repairs it to the ground-truth-camera oracle with twenty
+LiDAR frames and no retraining, suggesting LiDAR-anchored self-calibration as a
+general front-end for camera-conditioned depth models.
 
 **Limitations.** Zero-shot transfer fails by design: the per-camera latent
 dominates θ, so a brand-new camera needs a few frames of adaptation — true

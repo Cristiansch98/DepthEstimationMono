@@ -10,7 +10,8 @@ are a distilled, always-current index that points back into them.
 2. `02_architecture.md`     — SelfCalibDepth design: ray-map coupling, modules, losses, θ model.
 3. `03_status_and_results.md` — current state, v1→v3 ablation numbers, headline metrics, next steps.
 4. `04_environment_and_data.md` — Python/venv, remote RTX 5090, dataset on disk, key constants, gotchas.
-5. `05_benchmarks.md`         — unified multi-benchmark layer (AV2·KITTI·nuScenes·Lyft): the adapter contract, registry, CLIs, data prerequisites.
+5. `05_benchmarks.md`         — unified multi-benchmark layer (AV2·KITTI·nuScenes·Lyft): the adapter contract, registry, CLIs, data prerequisites; cross-dataset + few-shot + distortion-robustness results.
+6. `06_unidepth_analysis.md`  — UniDepth architecture (code-grounded), why it fails under distortion (pinhole-only camera head), and ranked improvements incl. our LiDAR few-shot method.
 
 ## Source of truth map
 | Topic                        | Authoritative file                          |

@@ -1,0 +1,76 @@
+================================================================================
+2026-06-24  SelfCalibDepth — the publishable niche: robustness to lens distortion
+================================================================================
+
+HYPOTHESIS
+  Pinhole-assuming foundation depth models (UniDepth) degrade under strong lens
+  distortion; LiDAR few-shot self-calibration with an EXPLICIT distortion model
+  (Brown-Conrady k1,k2) stays robust and overtakes them.
+
+METHOD (controlled, known-GT) — src/calib_depth/synth_distort.py
+  Inject known radial distortion k1 into a pinhole frame: inverse-warp the image
+  (remap) AND forward-distort the LiDAR uv consistently, so GT intrinsics become
+  (fx,fy,cx,cy,k1). Distortion strength = controlled variable. Eval on held-out
+  frames, <80 m, native res, via the unified adapters (--distort flag).
+  Justified heuristic: widen the learnable radial bound (0.05 -> 0.6/0.8) because
+  A4 (near-pinhole) is violated BY CONSTRUCTION; the bound must exceed true |k|.
+  Validated: few-shot recovers fx to <5% and depth simultaneously.
+
+RESULTS  (AbsRel metric / d1; UniDepth-V2-L zero-shot vs OURS 20-frame few-shot)
+  KITTI image_02
+    k1     UniDepth        OURS
+    0.00   0.091 / 0.973   0.100 / 0.953
+    -0.20  0.074 / 0.972   0.087 / 0.951
+    -0.30  0.123 / 0.883   0.106 / 0.889
+    -0.40  0.151 / 0.792   0.105 / 0.840
+    -0.50  0.193 / 0.706   0.107 / 0.836
+    -0.60  0.284 / 0.583   0.115 / 0.828
+  nuScenes CAM_FRONT
+    0.00   0.105 / 0.921   0.122 / 0.853
+    -0.40  0.143 / 0.781   0.177 / 0.790
+    -0.60  0.776 / 0.083   0.252 / 0.631
+
+FINDINGS
+  - UniDepth is robust to MILD distortion (|k1|<=0.2) but degrades monotonically
+    and COLLAPSES at strong/fisheye-strength distortion (KITTI 0.091->0.284;
+    nuScenes catastrophic 0.105->0.776, d1 0.083).
+  - OURS stays ~flat across the whole range (explicit distortion + few-shot LiDAR
+    absorbs it): KITTI AbsRel 0.09-0.12, d1 0.83-0.95.
+  - CROSSOVER ~k1=-0.3 (KITTI, where our base depth is strong); on nuScenes our
+    base depth is weaker so crossover is later (between -0.4 and -0.6) but by -0.6
+    OURS wins by ~3x AbsRel / ~7x d1.
+  - Calibration recovered throughout: fx err <5% even at k1=-0.6.
+
+THE PUBLISHABLE CLAIM (honest, defensible)
+  "Monocular metric-depth foundation models assume near-pinhole optics and fail
+  under strong lens distortion. A LiDAR-anchored few-shot self-calibration with an
+  explicit distortion model recovers metric depth where they fail, overtaking SOTA
+  (UniDepth) by up to 2.5x AbsRel / 7x d1 at fisheye-strength distortion, from 20
+  target frames." This is a gap UniDepth/Metric3D do NOT cover.
+
+REPLICATION ACROSS A SECOND DISTORTION FAMILY — Kannala-Brandt fisheye
+  (src/calib_depth/synth_fisheye.py; KITTI-360 real fisheye is LOGIN-GATED, so this
+  is the de-gated equivalent: genuine KB *angular* optics on KITTI-raw, ~+-40deg FOV.)
+  Strength-matching was essential: KB k1 and Brown-Conrady k1 are NOT comparable
+  (KB k1=0.9 pulls edges ~18%, BC k1=-0.6 ~44%). Unmatched KB (k1<=0.9) showed
+  UniDepth "robust" -> ARTIFACT. Matched-strong KB reproduces the failure:
+    KITTI image_02, KB fisheye (AbsRel / d1):
+    k1     UniDepth        OURS (few-shot, BC-approx, bound 6)
+    0.0    0.076 / 0.970   -
+    0.9    0.057 / 0.979   -
+    1.5    0.073 / 0.965   -
+    2.5    0.112 / 0.838   0.126 / 0.831   (tied)
+    4.0    0.158 / 0.688   0.119 / 0.832   (OURS wins)
+  => The robustness finding GENERALIZES across distortion families: UniDepth
+     degrades under strong distortion of EITHER model; ours stays flat (~0.12) and
+     overtakes at strong distortion. Our Brown-Conrady head only APPROXIMATES KB
+     (atan(r)~r within FOV) so DEPTH recovers but CALIBRATION is rough (fx err
+     7-52%); a native KB/MEI head would tighten calibration (future work).
+
+CAVEATS / NEXT (for a strong submission)
+  - Synthetic distortion (controlled, known-GT = a strength for a first result);
+    REPLICATE on a real fisheye+LiDAR dataset (WoodScape, KITTI-360 fisheye).
+  - Central-LiDAR bias UNDER-states UniDepth's peripheral failure -> our advantage
+    is likely conservative.
+  - Add tangential/higher-order terms; sweep #frames; report mean+/-std over cams.
+  - Give UniDepth a fair "GT-undistorted" oracle upper bound for context.

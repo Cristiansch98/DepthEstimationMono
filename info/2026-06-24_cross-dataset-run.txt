@@ -76,6 +76,46 @@ FULL FEW-SHOT ADAPTATION — DONE (--adapt-head --no-aspect-prior)
   RESIDUAL: fy ~10-14% even w/o aspect prior (vertical focal less observable from
   LiDAR reproj/3d; trades off against trainable depth head). Minor.
 
+BASELINE COMPARISON (publishability — src/calib_depth/baseline_eval.py, via adapters)
+  External pretrained models scored on the SAME frames/metrics through the unified
+  adapters (native res; metric = as-is, scaled = per-image median-aligned).
+    DAv2-metric (Outdoor, trained on VKITTI) zero-shot:
+      KITTI    : metric AbsRel 0.089 d1 0.904 | scaled 0.095/0.912  (near-IN-domain: VKITTI~KITTI)
+      nuScenes : metric AbsRel 0.364 d1 0.279 | scaled 0.219/0.664  (truly out-of-domain)
+    OURS 20-frame few-shot: KITTI 0.100/0.953, nuScenes 0.122/0.853.
+  TAKEAWAY (publishable angle): off-the-shelf metric models are strong only near
+  their training domain (KITTI~VKITTI) and DEGRADE badly on a genuinely different
+  camera (nuScenes 0.364), where our cheap 20-frame LiDAR adaptation WINS clearly
+  (0.122 vs 0.364 metric / 0.219 scaled). This is the frames-vs-accuracy story.
+  ZoeDepth (ZoeD_NK) fails to load (timm-version state_dict mismatch) - skipped.
+  UniDepth-V2-L run in isolated venv ~/Cubos_code/baselines/.venv (uninstall xformers
+  -> DINOv2 falls back to standard attention; numpy2 + matplotlib3.8).
+
+FULL BASELINE TABLE (zero-shot unless noted; AbsRel metric / d1; <80 m)
+  dataset   method                              AbsRel   d1
+  KITTI     UniDepth-V2-L (zero-shot)           0.089    0.973
+  KITTI     DAv2-metric-Outdoor (~VKITTI-dom.)  0.089    0.904
+  KITTI     OURS (20-frame few-shot)            0.100    0.953
+  nuScenes  UniDepth-V2-L (zero-shot)           0.105    0.921
+  nuScenes  DAv2-metric-Outdoor (zero-shot)     0.364    0.279
+  nuScenes  OURS (20-frame few-shot)            0.122    0.853
+
+VERDICT (honest, decisive)
+  UniDepth-V2-L zero-shot BEATS our 20-frame few-shot on BOTH datasets, and also
+  predicts its own intrinsics (our supposed headline). Our method only beats the
+  WEAK baseline (DAv2-metric) on out-of-domain nuScenes. => As a metric-depth /
+  self-calibration RESULTS paper, this work is NOT competitive with SOTA and is
+  NOT publishable in current form. Caveats: UniDepth-L is much larger (ViT-L) and
+  trained on ~16 datasets (nuScenes/KITTI likely in-domain for it); ours is
+  DAv2-Small on 40 AV2 logs. Fairer-scale comparison would narrow but not flip it.
+
+POSSIBLE PUBLISHABLE PIVOTS (only if a genuine gap vs UniDepth is shown)
+  1. Find a regime where UniDepth FAILS and LiDAR few-shot helps: strong-distortion
+     / fisheye / very-long-focal cameras outside UniDepth's intrinsic prior.
+  2. Reframe as analysis / negative-results / educational (workshop, not main conf):
+     calib-vs-scale separability + the affine-head negative result.
+  3. Drop the publication goal; keep as a solid engineering/teaching framework.
+
 REMAINING NEXT STEPS
   1. Tighten fy (longer adapt / reproj-weighted schedule / native aspect ratio).
   2. Add nuScenes/Lyft vehicle_targets (they ship 3D boxes) for cross-dataset
