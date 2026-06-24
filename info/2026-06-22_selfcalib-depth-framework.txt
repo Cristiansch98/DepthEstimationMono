@@ -1,0 +1,74 @@
+================================================================================
+2026-06-22  SelfCalibDepth — framework design + foundation
+================================================================================
+
+GOAL (user)
+  Framework that learns metric distance from a SINGLE camera image, using
+  synchronized LiDAR as ground-truth depth, where the model also learns/tunes
+  the camera parameters.
+
+SCOPING DECISIONS (user-selected)
+  - Calibration: FULL self-calibration (learn f, c, distortion; minimal priors).
+  - Backbone:    FINE-TUNE a foundation model (Depth Anything V2 / Metric3D).
+  - Target:      CAMERA-AWARE / generalize across focal lengths & cameras.
+
+CORE IDEA
+  The three pieces couple through a per-pixel RAY MAP:
+    calibration theta -> ray map -> conditions DAv2 decoder -> depth-along-ray
+    -> back-project with theta -> 3D points -> compared to metric LiDAR.
+  A wrong focal length => back-projected points don't match LiDAR => gradient
+  flows back into theta. LiDAR replaces multi-view bundle adjustment as the
+  geometric anchor (DroidCalib idea, re-grounded on LiDAR).
+
+WHAT WAS BUILT THIS SESSION
+  Data (proven, runs on real AV2):
+   - Downloaded a 19 MB slice of one AV2 *Sensor* val log (calibration + ego
+     poses + 12 LiDAR sweeps + 24 ring_front_center frames).
+   - src/lidar_depth.py: motion-compensated LiDAR->camera projection => sparse
+     metric depth GT. Verified: 11,894 returns into a 1550x2048 image, depth
+     4.1-210 m, dt 9.8 ms. Overlay saved to viz/ring_front_center_*_depth.png.
+
+  Framework (src/calib_depth/):
+   - camera_model.py : differentiable pinhole+Brown-Conrady; project /
+     back_project / ray_directions / (un)distort.  [REAL geometry]
+   - ray_map.py      : camera-aware conditioning tensor (rays + CamConvs + FOV).
+   - dataset.py      : AV2 Sensor -> (image, uv, gt_depth, lidar_cam, theta_gt).
+   - losses.py       : SILog + 3D-point + reproj + smooth + weak priors. The 3D
+     & reproj terms depend on theta -> they calibrate the camera.  [REAL]
+   - model.py        : DAv2 + ray-map conditioning + hybrid LearnableIntrinsics
+     (per-camera latent + image-conditioned residual).  [SCAFFOLD: backbone TODO]
+   - train.py / eval.py / infer.py : CLIs w/ param-grouped optim, checkpointing,
+     logging, metrics (AbsRel/RMSE/d1 + calibration error vs AV2 GT).  [SCAFFOLD]
+   - FRAMEWORK.md    : full architecture + losses + curriculum + roadmap.
+
+VALIDATION
+  - Geometry cross-checked vs av2 PinholeCamera: my pinhole projection matches
+    av2's to 0.000 px on near-axis points; project/back_project round-trip err
+    4e-15 m; ray dirs unit-norm & forward.
+  - Calibration signal confirmed: +10% focal error => 0.46 m mean 3D shift
+    (this is exactly what L_3d feeds back into theta).
+  - All modules py_compile; dataset discovers the sample log.
+
+KEY FACTS
+  - GT intrinsics of ring_front_center: fx=fy=1781.49, cx=775.51, cy=1022.94,
+    image 1550x2048. AV2 ships per-camera GT intrinsics -> calibration is
+    measurable (eval.calib_error).
+  - torch 2.12.1 HAS cp314 + CUDA13 wheels, so the same Py3.14 venv works; but
+    train DAv2 on the remote RTX 5090, not locally.
+  - AV2 has 7 ring + 2 stereo cams with DIFFERENT intrinsics on one rig => built
+    in focal diversity to test camera-aware generalization.
+
+NEXT STEPS
+  1. (GPU) Wire Depth Anything V2 encoder+DPT into model.py; adapt input conv
+     for +32 conditioning channels; add positive metric depth-along-ray head.
+  2. Curriculum: freeze theta@GT -> fine-tune depth (baseline) -> unfreeze theta
+     latent -> add image-conditioned delta + photometric loss.
+  3. Download more sensor logs (bulk via s5cmd s3://argoverse/datasets/av2/sensor/).
+  4. Implement eval.py / infer.py bodies; export back-projected point cloud and
+     compare vs raw LiDAR.
+
+OPEN QUESTIONS
+  - Distortion model: ring cams use a low-order radial model; Brown-Conrady k1..k3
+    should suffice, but check fisheye-ness of side/rear cams (Kannala-Brandt?).
+  - Photometric self-sup needs consecutive frames + ego pose warp (have poses).
+  - Repo hosting: still no dedicated git remote for ~/Argoverse2 (see prior info).

@@ -1,0 +1,60 @@
+================================================================================
+2026-06-22  Argoverse 2 Motion Forecasting — visualizer + format docs
+================================================================================
+
+GOAL
+  - Create a cool visualization of the Argoverse 2 dataset using the official
+    `av2` PyPI package, and document the data format/structure.
+
+WHAT WAS DONE
+  Environment (this box has only Python 3.14, no conda, no pip/ensurepip):
+    - python3.14 -m venv --without-pip .venv
+    - bootstrapped pip via get-pip.py inside the venv
+    - pip install av2  -> av2 0.2.1 (cp314 wheels exist, installs clean)
+    - swapped opencv-python -> opencv-python-headless (server lacks libGL.so.1)
+    - pinned deps in requirements.txt
+
+  Data (public over HTTPS, NO AWS creds needed):
+    - Bucket: https://argoverse.s3.amazonaws.com/datasets/av2/motion-forecasting/
+    - Each scenario folder = 2 files: scenario_<id>.parquet + log_map_archive_<id>.json
+    - Downloaded 5 val scenarios into data/motion-forecasting/ (~1.5 MB total)
+      cities covered: austin, washington-dc, pittsburgh (x2), palo-alto
+
+  Code:
+    - src/visualize_av2.py  : dark-themed hero PNG (HD map + all trajectories,
+      focal agent = plasma time-coloured trail with oriented boxes, ego=green)
+      and a self-contained animated GIF renderer.
+    - src/inspect_format.py : prints parquet schema + typed object model +
+      HD-map JSON structure for any scenario (companion to FORMAT.md).
+    - FORMAT.md             : full format reference.
+    - README.md             : setup + usage.
+
+  Outputs in viz/:
+    - 5x <id>_hero.png  (e.g. 0015197d_hero.png shows a left turn as a gradient)
+    - 0015197d_anim.gif (55 frames, stride 2, ~1.2 MB)
+
+KEY FINDINGS / FORMAT
+  - MF scenario = 11 s @ 10 Hz = 110 timesteps; first 50 observed, last 60 predicted.
+  - parquet is long-format: 1 row per (track, timestep); cols include position_x/y,
+    heading, velocity_x/y, object_type, object_category(0-3), focal_track_id, city.
+  - track_id == "AV" is the ego/autonomous vehicle. focal_track_id = prediction target.
+  - HD map JSON: drivable_areas + lane_segments + pedestrian_crossings.
+    lane_segments form a GRAPH (predecessors/successors/neighbors) + boundary
+    polylines; centerline is interpolated via get_lane_segment_centerline().
+  - MF gives pose+velocity but NOT box size -> used fixed ~4.6x2.0 m footprint.
+
+ERRORS ENCOUNTERED & FIXES
+  1. cv2 ImportError libGL.so.1 -> opencv-python-headless.
+  2. numpy 2.x removed ndarray.ptp() -> use np.ptp(arr).
+  3. av2 0.2.1 built-in viz.scenario_visualization crashes on matplotlib 3.11
+     (Rectangle angle now keyword-only) -> wrote own render_animation().
+  4. First hero framing zoomed to all agents = action too small -> reframed on
+     focal(+ego) bbox with margin; darkened road fill, brightened lane lines.
+
+NEXT STEPS / OPEN QUESTIONS
+  - No git remote for this Argoverse2 folder (git toplevel is /home/cubos, whose
+    'origin' is the unrelated colors_osm repo). NOT committed — needs a dedicated
+    repo before pushing. Ask user where to host.
+  - Could add: multi-scenario contact sheet; lane-graph-only diagram; render GIFs
+    for all 5 scenarios; downsample/optimize GIF size.
+  - For sensor/LiDAR subsets, same av2 API but much larger downloads (use s5cmd).

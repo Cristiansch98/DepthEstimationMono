@@ -1,0 +1,76 @@
+================================================================================
+2026-06-24  SelfCalibDepth — unified multi-benchmark layer (AV2/KITTI/nuScenes/Lyft)
+================================================================================
+
+GOAL (user)
+  Include images from other benchmarks (nuScenes, KITTI, Lyft L5) the SAME way as
+  Argoverse 2, so the framework + results generalize in a single, easy-to-
+  manipulate, unified framework.
+
+WHAT WAS BUILT
+  New pluggable benchmark layer: src/calib_depth/benchmarks/
+    base.py          - the shared contract:
+                       Frame(image, uv, depth_z, intrinsics) + CameraIntrinsics
+                       (fx,fy,cx,cy,w,h,k1..p2; .theta9(); .scaled(sx,sy))
+                       + FrameRef(benchmark, scene, cam, frame) (picklable; strings
+                       so file-tree AND token-DB datasets fit) + BenchmarkAdapter ABC
+                       (discover()/load()/optional vehicle_targets()).
+    __init__.py      - registry get_adapter(name); BENCHMARKS=('av2','kitti',
+                       'nuscenes','lyft'). SDK imports are LAZY (import never fails).
+    av2.py           - wraps proven lidar_depth.sparse_depth_map -> REFERENCE adapter.
+    kitti.py         - KITTI raw: P_rect.R_rect.Tr_velo->cam projection, rectified
+                       pinhole, intrinsics from P_rect. (image_02 / image_03)
+    _nuscenes_core.py- canonical 4-step lidar->ego->global->ego->cam motion-comp
+                       projection, shared by nuScenes + Lyft.
+    nuscenes.py      - nuscenes-devkit adapter (NUSCENES_VERSION env, default v1.0-mini).
+    lyft.py          - lyft_dataset_sdk adapter (nuScenes format; reuses the core).
+
+  dataset.py refactor:
+    - BenchmarkDepthDataset: ONE benchmark-agnostic dataset over any adapter. Does
+      the resize/scale, builds intrinsics-free lidar_cam anchor + theta_gt, adds
+      orig_wh. .build(benchmark, root, cams, stride, target_hw) factory.
+    - AV2SensorDepthDataset kept as a thin AV2 wrapper; .index (log_dir,cam,ts) and
+      discover_logs() preserved so eval/infer are untouched for AV2.
+
+  CLIs generalized:
+    - NEW src/visualize_benchmark.py: same LiDAR-depth overlay for ANY benchmark
+      (cross-dataset companion to lidar_depth.py).
+    - train.py: --benchmark (default av2), --cams (default = adapter's set), --stride;
+      builds via BenchmarkDepthDataset.build.
+    - eval.py: --benchmark/--split/--cams; vehicle targets now via adapter.vehicle_
+      targets(ref) + orig_wh scaling (AV2 numbers unchanged; others report n=0).
+
+VERIFICATION (local, AV2 sample, NO torch/GPU needed)
+  - av2 adapter.load() == sparse_depth_map(): image/uv/depth all equal.
+  - BenchmarkDepthDataset.build("av2") theta_gt scaling identical to old hardcoded path.
+  - registry returns all 4; empty-tree discover() -> [] (no crash).
+  - all new/changed modules py_compile clean.
+  - RAN: visualize_benchmark.py --benchmark av2 on data/sensor-sample ->
+    viz_bench/av2_ring_front_center_*_depth.png (overlay correct, 11.4-11.9k returns).
+
+DATA / SDK REALITY (why non-AV2 paths are implemented-but-not-yet-run)
+  - Remote ~/Cubos_code/KITTI is a SEPARATE project using tensorflow_datasets KITTI
+    (object detection: images + 3D box locations only; NO raw LiDAR/calib) -> NOT
+    usable for the LiDAR-GT path. Need KITTI RAW drives (velodyne_points + calib_*).
+  - No nuscenes-devkit / lyft_dataset_sdk installed, no nuScenes/Lyft data present.
+  - Adapters are written to the canonical public formats; they run unchanged once
+    data + SDKs exist on the remote RTX 5090.
+
+NEXT STEPS
+  1. (remote) pip install nuscenes-devkit lyft-dataset-sdk; fetch nuScenes v1.0-mini
+     + a KITTI raw drive + Lyft sample; run visualize_benchmark.py per dataset to
+     produce the "same as AV2" overlays.
+  2. Cross-dataset holdout: train on AV2, eval --benchmark nuscenes/kitti -> the real
+     test of camera-aware self-calibration across genuinely different intrinsics
+     (KITTI fx~721, nuScenes fx~1266, AV2 fx~1782). This addresses the standing
+     "real focal diversity / explicit cross-camera holdout" open item.
+  3. Add per-benchmark vehicle_targets for nuScenes/Lyft (they ship 3D boxes) to get
+     the distance-to-vehicle metric cross-dataset too.
+  4. Fold a benchmarks figure/section into PAPER.md once overlays exist.
+
+OPEN QUESTIONS
+  - KITTI: use raw drives (LiDAR sweeps, done here) vs KITTI-depth completion
+    (pre-projected sparse GT)? Raw chosen for parity with AV2; could add a depth adapter.
+  - Side/rear/fisheye cams (AV2 + nuScenes back cams) may need Kannala-Brandt; current
+    model is pinhole+Brown-Conrady (fine for front/narrow-FOV).
+  - Still no dedicated git remote for ~/Argoverse2 (toplevel origin = colors_osm).

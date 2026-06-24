@@ -1,0 +1,48 @@
+================================================================================
+2026-06-22  SelfCalibDepth — training set built (AV2 Sensor)
+================================================================================
+
+GOAL (refined by user)
+  Recreate camera parameters from a SINGLE monocular image (generalize to unseen
+  cameras) and report the REAL metric distance to objects — especially vehicles.
+
+TOOL
+  src/download_av2_sensor.py — selective, parallel (24 workers), resumable
+  downloader against the public AV2 HTTPS bucket (no AWS creds). Per log it pulls
+  only: calibration/{intrinsics,egovehicle_SE3_sensor}.feather, city_SE3_egovehicle
+  .feather, every Kth lidar sweep, and the nearest camera frame per ring camera.
+  Writes data/sensor/manifest_<split>.json.
+
+TRAINING SET ON DISK (data/sensor/)
+  - splits: train=40 logs (7.0 GB), val=8 logs (1.4 GB); total 8.3 GB
+  - cameras: all 7 ring cameras; lidar_stride=3
+  - 2,519 lidar sweeps | 17,630 camera frames | 48 annotation files
+  - + annotations.feather per log (3D cuboids) for vehicle ground-truth distance
+  discover_logs() auto-finds every log; no manifest wiring needed for training.
+
+VEHICLE DISTANCE (the headline signal)  — src/vehicle_distance.py
+  - AV2 3D cuboids give exact per-vehicle metric distance. Projected cuboids into
+    ring_front_center; verified range 7-219 m; busy downtown frame had 28
+    vehicles (10.9-211 m). Artifact: viz/hero_vehicles_315972819449927212.png.
+  - Folded into FRAMEWORK.md: optional L_vehicle object loss + headline metric
+    "distance-to-vehicle error" (ALE per range bucket 0-30/30-60/60+).
+
+FINDINGS
+  - Per-log download ~180 MB at stride 3 / 7 cams / ~24 s.
+  - Ring-camera focal diversity is modest: front_center fx≈1781 (portrait,
+    1550x2048) vs other ring cams fx≈1687 (landscape, 2048x1550). front_center is
+    the main outlier -> for stronger cross-camera generalization add the stereo
+    cameras (different intrinsics) or a second dataset.
+  - annotations.feather schema: timestamp_ns, track_uuid, category, length/width/
+    height_m, quaternion (qw..qz), tx/ty/tz_m (ego frame), num_interior_pts.
+    Vehicle categories: REGULAR_VEHICLE, LARGE_VEHICLE, BUS, BOX_TRUCK, TRUCK*,
+    MOTORCYCLE, etc.
+
+NEXT STEPS
+  1. (GPU, remote 5090) Wire Depth Anything V2 into model.py; train curriculum
+     (freeze theta@GT -> fine-tune depth -> unfreeze theta -> image-conditioned
+     delta + photometric) on data/sensor/train; validate on val.
+  2. Implement eval.py body: dense depth metrics + calib error + vehicle-distance
+     ALE; implement infer.py (image -> depth + theta + per-vehicle distances).
+  3. Optionally expand the set (more logs; add stereo cams) once the loop runs.
+  4. Push to a dedicated git repo (still none for ~/Argoverse2).

@@ -1,0 +1,63 @@
+================================================================================
+2026-06-23  SelfCalibDepth — first training run on remote RTX 5090
+================================================================================
+
+SETUP (remote thunderlane@10.162.44.13, ~/Cubos_code/SelfCalibDepth)
+  - Python 3.10 venv; torch 2.12.1+cu130 drives the RTX 5090 (sm_120, Blackwell).
+  - Installed: torch, torchvision, av2 0.3.6, transformers, timm, opencv*, etc.
+  - Depth Anything V2 Small (depth-anything/Depth-Anything-V2-Small-hf) via
+    transformers, 24.8M params (frozen). Trainable = 0.55M (calib + metric head).
+  - Code synced via tar-over-ssh; data re-downloaded ON the remote (8.3 GB,
+    40 train + 8 val logs, 7 ring cameras, all annotations).
+
+MODEL (v1)  src/calib_depth/model.py
+  image -> DAv2 -> relative depth; CalibEncoder(image) -> theta via
+  LearnableIntrinsics (per-camera latent + image-conditioned delta). theta -> ray
+  map conditions a small MetricHead([rel, cond, image]) -> metric depth-along-ray.
+  Training res 518x518; intrinsics + lidar uv scaled to match.
+
+RESULT — self-calibration converges from a WRONG init (fx=fy=500):
+  step  fx(pred/GT)   fy(pred/GT)   reproj
+  0     500/427       500/564       21.1
+  100   428/427       562/564       4.5
+  500   426/427       567/564       0.6
+  => recovers per-camera focal length in ~100 steps, supervised only by LiDAR.
+  0 NaNs, stable, ~25 steps/s. Runs 3 epochs, ckpt every 1000 steps.
+
+BUGS FOUND & FIXED (the NaN saga)
+  1. AMP fp16 overflow on metre-scale 3D losses -> NaN. Fix: train in fp32
+     (model is tiny, <1 GB) + grad clip + skip non-finite loss/grad steps.
+  2. ray_map FOV channel acos(z) has INFINITE gradient on the optical axis
+     (ray=(0,0,1)). Fix: clamp acos input to [-1+1e-4, 1-1e-4].
+  3. Freely-learned Brown-Conrady distortion makes undistort() diverge -> NaN.
+     Fix: v1 learns only (log_fx, log_fy, cx, cy); distortion held at 0 (AV2 ring
+     cams are near-pinhole). Re-enable later with strong constraints if needed.
+  4. Launch bug: `pkill -f calib_depth.train` matched the SSH shell running it
+     (pattern in its own cmdline) -> killed its own session / training. Fix: use
+     `pgrep/pkill -f "[c]alib_depth.train"` bracket trick, or launch w/o pkill.
+  5. opencv libGL ok on remote; empty AdamW param group (frozen backbone) -> drop
+     empty groups.
+
+FINAL RUN + EVAL (held-out val, 200 frames / 8 logs, ckpt step 52878)
+  Training finished clean: 3 epochs, 52,878 steps, exit 0, 0 NaN, final.pt saved.
+  CALIBRATION (vs AV2 GT):  fx 0.16% | fy 1.37% | cx 0.5px | cy 0.9px
+     -> self-calibration recovers intrinsics almost exactly on held-out cameras.
+        THIS IS THE HEADLINE: the model recreates camera params from the image.
+  DEPTH (LiDAR):  AbsRel 0.204 | RMSE 10.14 m | d<1.25 0.714  (decent v1)
+  VEHICLE DISTANCE (uses learned theta):  MAE 27.0 m / 32% overall (n=1455)
+     0-30 m: 3.90 m MAE | 30-60 m: 13.75 m | 60+ m: 44.20 m
+     -> close range good/usable; far range poor (expected for monocular + sparse
+        LiDAR; 741 of 1455 vehicles are >60 m and dominate the mean).
+
+IMPROVEMENT LEVERS (next)
+  - Unfreeze DAv2 backbone (currently frozen; only 0.55M params train) + DAv2-Large.
+  - Train/eval in log-depth; cap eval range (e.g. <=60 m) for the headline number.
+  - Add photometric self-sup; more logs; re-enable distortion with tight priors.
+
+NEXT
+  - Let 3-epoch run finish; confirm depth metrics improving (silog ~0.7-1.0 now).
+  - Implement eval.py body (AbsRel/RMSE/d1 + calib error + vehicle-distance ALE)
+    and infer.py (image -> depth + theta + per-vehicle distance) using val logs.
+  - Curriculum stage 3: unfreeze image-conditioned delta harder + add photometric;
+    test cross-camera generalization (hold out a camera).
+  - Consider re-enabling distortion with tight priors; try DAv2-Large backbone.

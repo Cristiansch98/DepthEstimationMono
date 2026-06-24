@@ -1,0 +1,147 @@
+=== TRAIN download ===
+14:54:16 | INFO    | Listing train logs ...
+14:54:16 | INFO    | Found 700 logs total; selected 40 (skip=0). Cameras=7, lidar_stride=3
+14:54:21 | INFO    |   planned log 1/40  (+419 files, total 419)
+14:54:21 | INFO    |   planned log 2/40  (+419 files, total 838)
+14:54:21 | INFO    |   planned log 3/40  (+427 files, total 1265)
+14:54:21 | INFO    |   planned log 4/40  (+427 files, total 1692)
+14:54:21 | INFO    |   planned log 5/40  (+419 files, total 2111)
+14:54:21 | INFO    |   planned log 6/40  (+427 files, total 2538)
+14:54:21 | INFO    |   planned log 7/40  (+427 files, total 2965)
+14:54:21 | INFO    |   planned log 8/40  (+419 files, total 3384)
+14:54:21 | INFO    |   planned log 9/40  (+427 files, total 3811)
+14:54:21 | INFO    |   planned log 10/40  (+427 files, total 4238)
+14:54:21 | INFO    |   planned log 11/40  (+427 files, total 4665)
+14:54:21 | INFO    |   planned log 12/40  (+427 files, total 5092)
+14:54:21 | INFO    |   planned log 13/40  (+419 files, total 5511)
+14:54:21 | INFO    |   planned log 14/40  (+419 files, total 5930)
+14:54:21 | INFO    |   planned log 15/40  (+427 files, total 6357)
+14:54:21 | INFO    |   planned log 16/40  (+419 files, total 6776)
+14:54:21 | INFO    |   planned log 17/40  (+419 files, total 7195)
+14:54:21 | INFO    |   planned log 18/40  (+419 files, total 7614)
+14:54:21 | INFO    |   planned log 19/40  (+419 files, total 8033)
+14:54:21 | INFO    |   planned log 20/40  (+427 files, total 8460)
+14:54:21 | INFO    |   planned log 21/40  (+427 files, total 8887)
+14:54:21 | INFO    |   planned log 22/40  (+427 files, total 9314)
+14:54:21 | INFO    |   planned log 23/40  (+427 files, total 9741)
+14:54:21 | INFO    |   planned log 24/40  (+427 files, total 10168)
+14:54:25 | INFO    |   planned log 25/40  (+419 files, total 10587)
+14:54:25 | INFO    |   planned log 26/40  (+419 files, total 11006)
+14:54:25 | INFO    |   planned log 27/40  (+419 files, total 11425)
+14:54:25 | INFO    |   planned log 28/40  (+419 files, total 11844)
+14:54:25 | INFO    |   planned log 29/40  (+419 files, total 12263)
+14:54:25 | INFO    |   planned log 30/40  (+427 files, total 12690)
+14:54:25 | INFO    |   planned log 31/40  (+427 files, total 13117)
+14:54:25 | INFO    |   planned log 32/40  (+427 files, total 13544)
+14:54:25 | INFO    |   planned log 33/40  (+419 files, total 13963)
+14:54:25 | INFO    |   planned log 34/40  (+427 files, total 14390)
+14:54:25 | INFO    |   planned log 35/40  (+419 files, total 14809)
+14:54:25 | INFO    |   planned log 36/40  (+427 files, total 15236)
+14:54:25 | INFO    |   planned log 37/40  (+419 files, total 15655)
+14:54:25 | INFO    |   planned log 38/40  (+427 files, total 16082)
+14:54:25 | INFO    |   planned log 39/40  (+419 files, total 16501)
+14:54:25 | INFO    |   planned log 40/40  (+419 files, total 16920)
+14:54:25 | INFO    | Downloading 16920 files with 24 workers ...
+14:54:33 | INFO    |   200/16920 files  (0.11 GB so far)
+14:54:39 | INFO    |   400/16920 files  (0.19 GB so far)
+14:54:46 | INFO    |   600/16920 files  (0.29 GB so far)
+14:54:52 | INFO    |   800/16920 files  (0.35 GB so far)
+14:54:59 | INFO    |   1000/16920 files  (0.46 GB so far)
+14:55:06 | INFO    |   1200/16920 files  (0.54 GB so far)
+14:55:13 | INFO    |   1400/16920 files  (0.64 GB so far)
+14:55:19 | INFO    |   1600/16920 files  (0.71 GB so far)
+14:55:26 | INFO    |   1800/16920 files  (0.80 GB so far)
+14:55:33 | INFO    |   2000/16920 files  (0.89 GB so far)
+14:55:40 | INFO    |   2200/16920 files  (0.99 GB so far)
+14:55:47 | INFO    |   2400/16920 files  (1.07 GB so far)
+14:55:54 | INFO    |   2600/16920 files  (1.18 GB so far)
+14:56:00 | INFO    |   2800/16920 files  (1.25 GB so far)
+14:56:07 | INFO    |   3000/16920 files  (1.33 GB so far)
+14:56:14 | INFO    |   3200/16920 files  (1.41 GB so far)
+14:56:20 | INFO    |   3400/16920 files  (1.49 GB so far)
+14:56:27 | INFO    |   3600/16920 files  (1.59 GB so far)
+14:56:34 | INFO    |   3800/16920 files  (1.66 GB so far)
+14:56:41 | INFO    |   4000/16920 files  (1.78 GB so far)
+14:56:48 | INFO    |   4200/16920 files  (1.86 GB so far)
+14:56:54 | INFO    |   4400/16920 files  (1.96 GB so far)
+14:57:01 | INFO    |   4600/16920 files  (2.03 GB so far)
+14:57:08 | INFO    |   4800/16920 files  (2.12 GB so far)
+14:57:14 | INFO    |   5000/16920 files  (2.19 GB so far)
+14:57:21 | INFO    |   5200/16920 files  (2.28 GB so far)
+14:57:28 | INFO    |   5400/16920 files  (2.36 GB so far)
+14:57:35 | INFO    |   5600/16920 files  (2.46 GB so far)
+14:57:41 | INFO    |   5800/16920 files  (2.52 GB so far)
+14:57:48 | INFO    |   6000/16920 files  (2.62 GB so far)
+14:57:55 | INFO    |   6200/16920 files  (2.69 GB so far)
+14:58:01 | INFO    |   6400/16920 files  (2.78 GB so far)
+14:58:08 | INFO    |   6600/16920 files  (2.87 GB so far)
+Traceback (most recent call last):
+  File "/home/cubos/Argoverse2/src/download_av2_sensor.py", line 163, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/home/cubos/Argoverse2/src/download_av2_sensor.py", line 147, in main
+    total_bytes += fut.result()
+                   ~~~~~~~~~~^^
+  File "/usr/lib/python3.14/concurrent/futures/_base.py", line 443, in result
+    return self.__get_result()
+           ~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/concurrent/futures/_base.py", line 395, in __get_result
+    raise self._exception
+  File "/usr/lib/python3.14/concurrent/futures/thread.py", line 86, in run
+    result = ctx.run(self.task)
+  File "/usr/lib/python3.14/concurrent/futures/thread.py", line 73, in run
+    return fn(*args, **kwargs)
+  File "/home/cubos/Argoverse2/src/download_av2_sensor.py", line 75, in download_one
+    data = _get(f"{BUCKET}/{key}")
+  File "/home/cubos/Argoverse2/src/download_av2_sensor.py", line 42, in _get
+    with urlopen(url, timeout=timeout) as r:
+         ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/urllib/request.py", line 187, in urlopen
+    return opener.open(url, data, timeout)
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/urllib/request.py", line 493, in open
+    response = meth(req, response)
+  File "/usr/lib/python3.14/urllib/request.py", line 602, in http_response
+    response = self.parent.error(
+        'http', request, response, code, msg, hdrs)
+  File "/usr/lib/python3.14/urllib/request.py", line 531, in error
+    return self._call_chain(*args)
+           ~~~~~~~~~~~~~~~~^^^^^^^
+  File "/usr/lib/python3.14/urllib/request.py", line 464, in _call_chain
+    result = func(*args)
+  File "/usr/lib/python3.14/urllib/request.py", line 611, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 503: Service Unavailable
+=== VAL download ===
+15:04:11 | INFO    | Listing val logs ...
+15:04:11 | INFO    | Found 150 logs total; selected 8 (skip=0). Cameras=7, lidar_stride=3
+15:04:15 | INFO    |   planned log 1/8  (+427 files, total 427)
+15:04:16 | INFO    |   planned log 2/8  (+419 files, total 846)
+15:04:16 | INFO    |   planned log 3/8  (+419 files, total 1265)
+15:04:16 | INFO    |   planned log 4/8  (+419 files, total 1684)
+15:04:16 | INFO    |   planned log 5/8  (+419 files, total 2103)
+15:04:16 | INFO    |   planned log 6/8  (+427 files, total 2530)
+15:04:16 | INFO    |   planned log 7/8  (+419 files, total 2949)
+15:04:16 | INFO    |   planned log 8/8  (+427 files, total 3376)
+15:04:16 | INFO    | Downloading 3376 files with 24 workers ...
+15:04:24 | INFO    |   200/3376 files  (0.11 GB so far)
+15:04:31 | INFO    |   400/3376 files  (0.18 GB so far)
+15:04:38 | INFO    |   600/3376 files  (0.28 GB so far)
+15:04:45 | INFO    |   800/3376 files  (0.35 GB so far)
+15:04:52 | INFO    |   1000/3376 files  (0.45 GB so far)
+15:04:59 | INFO    |   1200/3376 files  (0.52 GB so far)
+15:05:06 | INFO    |   1400/3376 files  (0.63 GB so far)
+15:05:13 | INFO    |   1600/3376 files  (0.71 GB so far)
+15:05:21 | INFO    |   1800/3376 files  (0.81 GB so far)
+15:05:28 | INFO    |   2000/3376 files  (0.89 GB so far)
+15:05:35 | INFO    |   2200/3376 files  (0.99 GB so far)
+15:05:42 | INFO    |   2400/3376 files  (1.06 GB so far)
+15:05:49 | INFO    |   2600/3376 files  (1.16 GB so far)
+15:05:56 | INFO    |   2800/3376 files  (1.24 GB so far)
+15:06:01 | INFO    |   3000/3376 files  (1.28 GB so far)
+15:06:01 | INFO    |   3200/3376 files  (1.28 GB so far)
+15:06:01 | INFO    | Done in 1.8 min. New data: 1.28 GB. Manifest -> data/sensor/manifest_val.json
+=== FINAL SIZES ===
+6.9G	data/sensor/train
+1.4G	data/sensor/val
+train logs: 40 | val logs: 8

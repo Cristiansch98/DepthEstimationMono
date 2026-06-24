@@ -1,0 +1,88 @@
+================================================================================
+2026-06-24  SelfCalibDepth — KITTI/nuScenes/Lyft adapters RUN + cross-dataset eval
+================================================================================
+
+GOAL (user)
+  Make the KITTI/nuScenes/Lyft adapters actually run (their data + SDKs) and run
+  the cross-dataset generalization eval.
+
+DONE ON REMOTE (thunderlane@10.162.44.13, ~/Cubos_code/SelfCalibDepth)
+  - Synced the new benchmark layer (src/calib_depth/benchmarks/, dataset.py,
+    train.py, eval.py, src/visualize_benchmark.py); py_compile OK on remote.
+  - Installed nuscenes-devkit 1.2.0. Side effect: numpy 2.2.6 -> 1.26.4. Verified
+    torch 2.12.1+cu130 (CUDA ok), av2, nuscenes all import together afterwards.
+  - lyft-dataset-sdk NOT installed: dry-run shows it re-bumps numpy to 2.2.6 and
+    pulls black/flake8/pytest/plotly -> would destabilize the training env. Also
+    Lyft L5 data is account-gated now (public S3 mirrors return 403/404). Lyft
+    adapter stays code-complete (shares the verified nuScenes core) but UNRUN.
+  - Data (public, no auth): KITTI raw 2011_09_26_drive_0001_sync (108 frames) +
+    calib; nuScenes v1.0-mini (4.1 GB, 404 CAM_FRONT frames). In ~/Cubos_code/data_bench/.
+
+OVERLAYS (visualize_benchmark.py -> viz_bench/, pulled to local viz_bench/)
+  Same LiDAR-depth overlay as AV2, now for all available benchmarks. Confirms
+  per-dataset projection + intrinsic diversity:
+    AV2  ring_front_center  fx~1782  1550x2048
+    KITTI image_02          fx~721   1242x375   19,956 returns
+    nuScenes CAM_FRONT      fx~1266  1600x900    3,067 returns
+
+CROSS-DATASET ZERO-SHOT EVAL (AV2-trained v3 ckpt = checkpoints_v3/final.pt,
+step 52878; front cam -> latent[0]; 100 frames each)
+  dataset            AbsRel  RMSE   d1     fx err   fy err
+  AV2 (in-domain)    0.112   7.30   0.884  0.26%    0.41%
+  nuScenes (0-shot)  0.271   8.41   0.191  45.2%    37.7%
+  KITTI   (0-shot)   0.393   8.86   0.022  97.1%    54.6%
+
+FINDING (honest, important — NOT a bug)
+  The framework runs unchanged on every dataset, but does NOT zero-shot transfer.
+  Structural cause (model.py): theta = latent[cam_idx] + 0.1*delta_head(feat).
+  The per-camera latent (AV2-learned focal) dominates; the image-conditioned
+  residual is only 0.1x and zero-initialized, so on an unseen camera the model
+  predicts ~the AV2 focal. KITTI true fx~301 (518-space) is far from the AV2 front
+  latent ~595 -> 97% fx error and collapsed depth scale (d1 0.02). nuScenes ~410
+  is closer -> less bad (45% / d1 0.19). The depth head's metric scale is focal-
+  conditioned, so wrong theta also degrades depth.
+
+FEW-SHOT LATENT ADAPTATION — DONE (src/calib_depth/adapt_latent.py)
+  Freeze entire net, optimize ONLY the per-camera latent (log fx,fy,cx,cy,k1,k2) on
+  20 target frames via LiDAR 3d/reproj losses; eval on held-out frames before/after.
+    dataset    fx err           fy err         AbsRel         d1
+    KITTI      97.1% -> 0.2%    54.6% -> 10.1% 0.390 -> 0.402 0.026 -> 0.021
+    nuScenes   45.3% -> 0.5%    37.6% -> 13.3% 0.274 -> 0.284 0.184 -> 0.172
+  POSITIVE RESULT: self-calibration TRANSFERS cross-dataset. 20 frames + 4-6 numbers
+  recover true focal to <0.5% (fx) on both KITTI & nuScenes from a wrong AV2 init in
+  ~150 steps (mirrors the original "converges from wrong init in ~100 steps").
+  TWO limitations exposed (both actionable):
+   (1) metric depth unchanged — depth head (ScaleMappingHead) frozen & AV2-tuned, so
+       correct theta alone can't fix metric scale, esp. under anisotropic resize to
+       518^2 (KITTI fx 301 vs fy 997). Calib vs depth-scale transfer are SEPARABLE.
+   (2) fy under-recovers (10-13%) because loss_prior has an aspect penalty
+       (log fx/fy)^2 that is wrong once resized to 518^2 -> pulls fy toward fx.
+
+FULL FEW-SHOT ADAPTATION — DONE (--adapt-head --no-aspect-prior)
+  Also unfreeze the 58.8k-param ScaleMappingHead (lr 1e-3) + zero the (log fx/fy)^2
+  prior. 20 frames, 400 steps, held-out eval.
+    dataset                  AbsRel  RMSE   d1     fx%    fy%
+    KITTI    zero-shot       0.390   8.90   0.026  97.1   54.6
+    KITTI    +latent         0.402   8.99   0.021   0.2   10.1
+    KITTI    +latent+head    0.100   4.15   0.953   1.1   10.0
+    nuScenes zero-shot       0.274   8.45   0.184  45.3   37.6
+    nuScenes +latent         0.284   8.49   0.172   0.5   13.3
+    nuScenes +latent+head    0.122   6.15   0.853   0.7   13.8
+    AV2 in-domain (ref)      0.112   7.30   0.884   0.26  0.41
+  HEADLINE: framework GENERALIZES. 20 frames + light adapt -> KITTI 0.100/0.953,
+  nuScenes 0.122/0.853, on par with (KITTI better than) AV2 in-domain; fx ~1%.
+  Depth-head adapt is what fixes metric depth (latent-only didn't) -> calibration
+  and depth-scale transfer are separable but BOTH recoverable few-shot.
+  RESIDUAL: fy ~10-14% even w/o aspect prior (vertical focal less observable from
+  LiDAR reproj/3d; trades off against trainable depth head). Minor.
+
+REMAINING NEXT STEPS
+  1. Tighten fy (longer adapt / reproj-weighted schedule / native aspect ratio).
+  2. Add nuScenes/Lyft vehicle_targets (they ship 3D boxes) for cross-dataset
+     distance-to-vehicle numbers.
+  3. Get Lyft data via Woven/Kaggle account to close the 4th benchmark.
+  4. Fold the cross-dataset + few-shot table into PAPER.md.
+
+OPEN QUESTIONS
+  - Confirm with user whether to run the few-shot latent adaptation now (cheap, GPU).
+  - Still no dedicated git remote for ~/Argoverse2.

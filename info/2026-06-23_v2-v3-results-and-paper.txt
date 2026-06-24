@@ -1,0 +1,43 @@
+================================================================================
+2026-06-23  SelfCalibDepth — v2/v2b/v3 ablation + paper
+================================================================================
+
+GOAL: improve the framework (annotate assumptions) and write a 3-4 page paper.
+
+ABLATION (held-out val, 200 frames / 8 logs; all trained 3 epochs on RTX 5090)
+  ver  change                                   AbsRel RMSE  d1    fx%   fy%   veh<=60
+  v1   free conv head, frozen backbone          0.204  10.14 0.714 0.16  1.37  -
+  v2   camera-affine head, LOG-depth (wrong A2) 0.368  11.95 0.560 0.55  0.61  8.47
+  v2b  camera-affine head, INV-depth (fixed A2)  0.249  10.95 0.685 0.30  1.33  9.14
+  v3   free head + BACKBONE UNFROZEN + distort   0.112  7.30  0.884 0.26  0.41  8.56
+  v3 vehicle MAE: 0-30m 3.90 | 30-60m 12.57 | 60+m 35.85 | overall 22.46
+
+KEY FINDINGS
+  - Self-calibration works across ALL versions (<=1.4% focal err on held-out
+    cameras). v3 best: fx 0.26% / fy 0.41%, cx/cy sub-pixel. CORE CLAIM HOLDS.
+  - NEGATIVE RESULT (pinpointed): camera-conditioned global-affine scale head
+    (P-A) underperformed the free conv head on depth. v2 regressed (wrong A2:
+    used log-depth; DAv2 disparity is affine in INVERSE-depth). v2b fixed the
+    functional form (1/Z = s*disp + t) -> recovered most of it (0.249) but still
+    lost to v1. A single global affine is too rigid for per-pixel metric depth.
+  - REAL LEVER = unfreezing the DAv2 backbone (P-B). v3 nearly halved AbsRel
+    (0.204->0.112), d1 0.71->0.88, best calibration, best far-range vehicle dist.
+  - Bounded radial distortion (P-C) enabled in v2/v3 (k=0.05*tanh), learned
+    k1~0.0068 on front_center; stable, no NaN.
+
+INFERENCE DEMO (v3)
+  - src/calib_depth/infer.py: single image -> depth + estimated theta + per-vehicle
+    pred/GT distance. Example: front_center, estimated fx=593 vs GT 595 (0.4%).
+  - Figures pulled to local viz_v3/: infer_v3_demo.png, infer_v3_closetraffic.png
+    (busy frame, 25 vehicles labelled pred/GT + predicted depth map).
+
+DELIVERABLE
+  - PAPER.md (Abstract, Introduction, Literature Review, Methodology,
+    Implementation, Results, Conclusion). ~4 pages. References Fig 1 = the demo.
+
+ASSUMPTIONS A1-A5 annotated in model.py docstring + FRAMEWORK.md "v2 improvements".
+
+NEXT (open)
+  - Stereo cams / 2nd dataset for real focal diversity; explicit cross-camera
+    holdout; photometric self-sup; larger backbone; >60m depth still weak.
+  - Convert PAPER.md -> PDF if pandoc/latex available.

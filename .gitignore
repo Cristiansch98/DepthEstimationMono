@@ -1,0 +1,25 @@
+# Python environment / caches
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Large, regenerable data & training artifacts (download/train scripts recreate these)
+data/
+checkpoints*/
+*.part
+
+# Scratch / temporary
+tmp_one/
+/tmp/
+*.tmp
+
+# OS / editor cruft
+.DS_Store
+*.swp
+
+# Tracked on purpose: src/, info/, viz/, viz_v3/, *.md, PAPER.pdf, PAPER.docx, requirements.txt
+
+# Caches (excluded per request)
+cache/
+.cache/
